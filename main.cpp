@@ -28,7 +28,8 @@ void enableRawMode() {
     tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
     atexit(disableRawMode); // exec when exit
     struct termios raw = canonical;
-    raw.c_lflag &= ~(ECHO | ICANON | ISIG); // echo | raw mode | SIGINT, SIGTSTP
+    raw.c_lflag &= ~(IXON); // Disable software control
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG); // Disable echo | raw mode | SIGINT, SIGTSTP
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
 }
 
