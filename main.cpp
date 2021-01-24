@@ -13,13 +13,16 @@ void disableRawMode();
 int main(int argc, const char *argv[])
 {
     enableRawMode();
-    char c;
-    while(read(STDIN_FILENO, &c, 1) == 1 && c != 'q') {
+
+    while(1) {
+        char c = '\0';
+        read(STDIN_FILENO, &c, 1);
         if (iscntrl(c)) { // Control char ex:ESC, return etc...
-            printf("%d\n", c);
+            printf("%d\r\n", c);
         } else {
-            printf("%d ('%c')\n", c, c);
+            printf("%d ('%c')\r\n", c, c);
         }
+        if (c == 'q') break;
     }
     return 0;
 }
@@ -27,9 +30,19 @@ int main(int argc, const char *argv[])
 void enableRawMode() {
     tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
     atexit(disableRawMode); // exec when exit
+
     struct termios raw = canonical;
-    raw.c_lflag &= ~(IXON); // Disable software control
-    raw.c_lflag &= ~(ECHO | ICANON | ISIG); // Disable echo | raw mode | SIGINT, SIGTSTP
+    // Character size
+    raw.c_cflag |= (CS8);
+    // Disable
+    raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON); // return | software control
+    raw.c_oflag &= ~(OPOST); // output
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN); // echo | raw mode | SIGINT, SIGTSTP | waiting another type
+    // min value of bytes of input needed before read()
+    raw.c_cc[VMIN] = 0; // 0 char
+    // time of waiting user
+    raw.c_cc[VTIME] = 1; // * 100 millis
+
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
 }
 
