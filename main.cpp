@@ -1,5 +1,9 @@
+#include<cstdlib>
+
 #include<unistd.h>
 #include<termios.h>
+
+struct termios canonical;
 
 void enableRawMode();
 void disableRawMode();
@@ -13,8 +17,13 @@ int main(int argc, const char *argv[])
 }
 
 void enableRawMode() {
-    struct termios raw;
-    tcgetattr(STDIN_FILENO, &raw); // get terminal attribute
-    raw.c_lflag &= ~(ECHO); // change to raw(non canonical) mode
+    tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
+    atexit(disableRawMode); // exec when exit
+    struct termios raw = canonical;
+    raw.c_lflag &= ~(ECHO | ICANON); // change to raw(non canonical) mode
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
+}
+
+void disableRawMode() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &canonical); // set termial attribute
 }
