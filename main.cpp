@@ -1,14 +1,24 @@
 #include<cstdlib>
 #include<cctype>
 #include<cstdio>
+#include<cerrno>
 
 #include<unistd.h>
 #include<termios.h>
 
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 struct termios canonical;
+int err;
+
+void die(const char *s) {
+    perror(s);
+    exit(1);
+}
 
 void enableRawMode();
 void disableRawMode();
+char editorReadKey();
 
 int main(int argc, const char *argv[])
 {
@@ -16,19 +26,24 @@ int main(int argc, const char *argv[])
 
     while(1) {
         char c = '\0';
-        read(STDIN_FILENO, &c, 1);
+
+        err = read(STDIN_FILENO, &c, 1);
+        if (err < 0) die("read");
+
         if (iscntrl(c)) { // Control char ex:ESC, return etc...
             printf("%d\r\n", c);
         } else {
             printf("%d ('%c')\r\n", c, c);
         }
-        if (c == 'q') break;
+        if (c == CTRL_KEY('q')) break;
     }
     return 0;
 }
 
 void enableRawMode() {
-    tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
+    err = tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
+    if (err < 0) die("tcgetattr");
+
     atexit(disableRawMode); // exec when exit
 
     struct termios raw = canonical;
@@ -43,9 +58,17 @@ void enableRawMode() {
     // time of waiting user
     raw.c_cc[VTIME] = 1; // * 100 millis
 
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
+    err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
+    if (err < 0) die("tcsetattr");
 }
 
 void disableRawMode() {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &canonical); // set termial attribute
+    // Set termial attribute
+    err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &canonical);
+    if (err < 0) die("tcsetattr");
+}
+
+char editorReadKey() {
+    int nread;
+    char c;
 }
