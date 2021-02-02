@@ -11,35 +11,31 @@
 struct termios canonical;
 int err;
 
-void die(const char *s) {
-    perror(s);
-    exit(1);
-}
-
+void die(const char *s);
 void enableRawMode();
 void disableRawMode();
 char editorReadKey();
+void editorProcessKeypress();
+void editorRefreshScreen();
 
 int main(int argc, const char *argv[])
 {
     enableRawMode();
 
     while(1) {
-        char c = '\0';
-
-        err = read(STDIN_FILENO, &c, 1);
-        if (err < 0) die("read");
-
-        if (iscntrl(c)) { // Control char ex:ESC, return etc...
-            printf("%d\r\n", c);
-        } else {
-            printf("%d ('%c')\r\n", c, c);
-        }
-        if (c == CTRL_KEY('q')) break;
+        editorRefreshScreen();
+        editorProcessKeypress();
     }
     return 0;
 }
 
+// Error
+void die(const char *s) {
+    perror(s);
+    exit(1);
+}
+
+// Enable raw mode (non canonical mode)
 void enableRawMode() {
     err = tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
     if (err < 0) die("tcgetattr");
@@ -62,13 +58,35 @@ void enableRawMode() {
     if (err < 0) die("tcsetattr");
 }
 
+// Set termial attribute
 void disableRawMode() {
-    // Set termial attribute
     err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &canonical);
     if (err < 0) die("tcsetattr");
 }
 
+// key input
 char editorReadKey() {
     int nread;
     char c;
+    // Doesn't work bellow comment out code...
+    // nread = read(STDIN_FILENO, &c, 1);
+    // while (nread != 1) {
+    while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+        if (nread == -1 && errno != EAGAIN) die("read");
+    }
+    return c;
+}
+
+void editorProcessKeypress() {
+    char c = editorReadKey();
+    switch (c) {
+        case CTRL_KEY('q'):
+            exit(0);
+            break;
+    }
+}
+
+// Refresh screen
+void editorRefreshScreen() {
+    write(STDOUT_FILENO, "\x1b[2J", 4);
 }
