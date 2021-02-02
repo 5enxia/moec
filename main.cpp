@@ -8,7 +8,12 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
-struct termios canonical;
+struct editorConfig {
+    struct termios orig_termios;
+};
+
+struct editorConfig E;
+
 int err;
 
 void die(const char *s);
@@ -17,6 +22,7 @@ void disableRawMode();
 char editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
+void editorDrawRows();
 
 int main(int argc, const char *argv[])
 {
@@ -31,19 +37,20 @@ int main(int argc, const char *argv[])
 
 // Error
 void die(const char *s) {
-    editorRefreshScreen();
+    write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
+    write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
     perror(s);
     exit(1);
 }
 
 // Enable raw mode (non canonical mode)
 void enableRawMode() {
-    err = tcgetattr(STDIN_FILENO, &canonical); // get terminal attribute
+    err = tcgetattr(STDIN_FILENO, &E.orig_termios); // get terminal attribute
     if (err < 0) die("tcgetattr");
 
     atexit(disableRawMode); // exec when exit
 
-    struct termios raw = canonical;
+    struct termios raw = E.orig_termios;
     // Character size
     raw.c_cflag |= (CS8);
     // Disable
@@ -61,7 +68,7 @@ void enableRawMode() {
 
 // Set termial attribute
 void disableRawMode() {
-    err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &canonical);
+    err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
     if (err < 0) die("tcsetattr");
 }
 
@@ -82,7 +89,8 @@ void editorProcessKeypress() {
     char c = editorReadKey();
     switch (c) {
         case CTRL_KEY('q'):
-            editorRefreshScreen();
+            write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
+            write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
             break;
     }
@@ -91,5 +99,14 @@ void editorProcessKeypress() {
 // Refresh screen
 void editorRefreshScreen() {
     write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
-    write(STDOUT_FILENO, "\x1b[H", 3); // initialize cursor position
+    write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+    editorDrawRows();
+    write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+}
+
+
+void editorDrawRows() {
+    int y;
+    const int WIN_H = 48;
+    for (y = 0; y < WIN_H; y++) write(STDOUT_FILENO, "~\r\n", 3);
 }
