@@ -31,6 +31,7 @@ int main(int argc, const char *argv[])
 
 // Error
 void die(const char *s) {
+    editorRefreshScreen();
     perror(s);
     exit(1);
 }
@@ -81,6 +82,7 @@ void editorProcessKeypress() {
     char c = editorReadKey();
     switch (c) {
         case CTRL_KEY('q'):
+            editorRefreshScreen();
             exit(0);
             break;
     }
@@ -88,5 +90,6 @@ void editorProcessKeypress() {
 
 // Refresh screen
 void editorRefreshScreen() {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
+    write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
+    write(STDOUT_FILENO, "\x1b[H", 3); // initialize cursor position
 }
