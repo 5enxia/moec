@@ -5,27 +5,32 @@
 
 #include<unistd.h>
 #include<termios.h>
+#include<sys/ioctl.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
+// err
+int err;
+void die(const char *s);
+
+// control canonical
+void enableRawMode();
+void disableRawMode();
+
+// editor
 struct editorConfig {
     struct termios orig_termios;
 };
-
 struct editorConfig E;
-
-int err;
-
-void die(const char *s);
-void enableRawMode();
-void disableRawMode();
 char editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows();
 
-int main(int argc, const char *argv[])
-{
+// window
+int getWindowSize();
+
+int main(int argc, const char *argv[]) {
     enableRawMode();
 
     while(1) {
@@ -35,16 +40,14 @@ int main(int argc, const char *argv[])
     return 0;
 }
 
-// Error
-void die(const char *s) {
+void die(const char *s) { // Error
     write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
     write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
     perror(s);
     exit(1);
 }
 
-// Enable raw mode (non canonical mode)
-void enableRawMode() {
+void enableRawMode() { // Enable raw mode (non canonical mode)
     err = tcgetattr(STDIN_FILENO, &E.orig_termios); // get terminal attribute
     if (err < 0) die("tcgetattr");
 
@@ -66,14 +69,12 @@ void enableRawMode() {
     if (err < 0) die("tcsetattr");
 }
 
-// Set termial attribute
-void disableRawMode() {
+void disableRawMode() { // Set termial attribute
     err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios);
     if (err < 0) die("tcsetattr");
 }
 
-// key input
-char editorReadKey() {
+char editorReadKey() { // key input
     int nread;
     char c;
     // Doesn't work bellow comment out code...
@@ -96,8 +97,7 @@ void editorProcessKeypress() {
     }
 }
 
-// Refresh screen
-void editorRefreshScreen() {
+void editorRefreshScreen() { // Refresh screen
     write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
     write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
     editorDrawRows();
@@ -109,4 +109,13 @@ void editorDrawRows() {
     int y;
     const int WIN_H = 48;
     for (y = 0; y < WIN_H; y++) write(STDOUT_FILENO, "~\r\n", 3);
+}
+
+int getWindowSize(int &rows, int &cols) {
+    struct winsize ws;
+    err = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
+    if (err == -1 || ws.ws_col == 0) return -1;
+    cols = ws.ws_col;
+    rows = ws.ws_row;
+    return 0;
 }
