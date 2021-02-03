@@ -9,6 +9,9 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 
+// debug
+bool debug = false;
+
 // err
 int err;
 void die(const char *s);
@@ -30,8 +33,19 @@ void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows();
 int getWindowSize(int &rows, int &cols);
+int getCursorPosition(int &rows, int &cols);
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char * const argv[]) {
+    // parse option
+    int opt;
+    while((opt = getopt(argc, argv, "d")) != -1) {
+        switch (opt) {
+            case 'd':
+                debug = 1;
+                break;
+        }
+    }
+
     enableRawMode();
     initEditor();
 
@@ -120,9 +134,26 @@ void editorDrawRows() {
 int getWindowSize(int &rows, int &cols) {
     struct winsize ws;
     err = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-    if (err == -1 || ws.ws_col == 0) return -1;
+    // bool debug = false;
+    if (debug || err == -1 || ws.ws_col == 0){
+        err = write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12);
+        if (err != 12) return -1;
+        return getCursorPosition(rows, cols);
+    }
     cols = ws.ws_col;
     rows = ws.ws_row;
     return 0;
 }
 
+int getCursorPosition(int &rows, int &cols) {
+    err = write(STDOUT_FILENO, "\x1b[6n", 4);
+    if (err != 4) return -1;
+    printf("\r\n");
+    char c;
+    while (read(STDIN_FILENO, &c, 1) == 1) {
+        if (iscntrl(c)) printf("%d\r\n", c);
+        printf("%d ('%c')\r\n", c, c);
+    }
+    editorReadKey();
+    return -1;
+}
