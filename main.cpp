@@ -19,19 +19,21 @@ void disableRawMode();
 
 // editor
 struct editorConfig {
+    int screenrows;
+    int screencols;
     struct termios orig_termios;
 };
 struct editorConfig E;
+void initEditor();
 char editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows();
-
-// window
-int getWindowSize();
+int getWindowSize(int &rows, int &cols);
 
 int main(int argc, const char *argv[]) {
     enableRawMode();
+    initEditor();
 
     while(1) {
         editorRefreshScreen();
@@ -74,6 +76,11 @@ void disableRawMode() { // Set termial attribute
     if (err < 0) die("tcsetattr");
 }
 
+void initEditor() {
+    err = getWindowSize(E.screenrows, E.screencols);
+    if (err == -1) die("getWindowSize");
+}
+
 char editorReadKey() { // key input
     int nread;
     char c;
@@ -107,8 +114,7 @@ void editorRefreshScreen() { // Refresh screen
 
 void editorDrawRows() {
     int y;
-    const int WIN_H = 48;
-    for (y = 0; y < WIN_H; y++) write(STDOUT_FILENO, "~\r\n", 3);
+    for (y = 0; y < E.screenrows; y++) write(STDOUT_FILENO, "~\r\n", 3);
 }
 
 int getWindowSize(int &rows, int &cols) {
@@ -119,3 +125,4 @@ int getWindowSize(int &rows, int &cols) {
     rows = ws.ws_row;
     return 0;
 }
+
