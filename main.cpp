@@ -2,14 +2,27 @@
 #include<cctype>
 #include<cstdio>
 #include<cerrno>
+#include<cstring>
 
 #include<unistd.h>
 #include<termios.h>
 #include<sys/ioctl.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
+#define ABUF_INIT {NULL, 0}
 
-// debug
+struct abuf { // append buffer
+    char *b;
+    int len;
+};
+
+struct editorConfig { // editor params
+    int screenrows;
+    int screencols;
+    struct termios orig_termios;
+};
+
+// debug mode
 bool debug = false;
 
 // err
@@ -21,19 +34,18 @@ void enableRawMode();
 void disableRawMode();
 
 // editor
-struct editorConfig {
-    int screenrows;
-    int screencols;
-    struct termios orig_termios;
-};
 struct editorConfig E;
 void initEditor();
 char editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
-void editorDrawRows();
-int getWindowSize(int &rows, int &cols);
-int getCursorPosition(int &rows, int &cols);
+void editorDrawRows(struct abuf *ab);
+int getWindowSize(int *rows, int *cols);
+int getCursorPosition(int *rows, int *cols);
+
+// append buffer
+void abAppend(struct abuf *ab, const char *s, int len);
+void abFree(struct abuf *ab);
 
 int main(int argc, char * const argv[]) {
     // parse option
@@ -41,14 +53,12 @@ int main(int argc, char * const argv[]) {
     while((opt = getopt(argc, argv, "d")) != -1) {
         switch (opt) {
             case 'd':
-                debug = 1;
+                debug = true;
                 break;
         }
     }
-
     enableRawMode();
     initEditor();
-
     while(1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -66,9 +76,7 @@ void die(const char *s) { // Error
 void enableRawMode() { // Enable raw mode (non canonical mode)
     err = tcgetattr(STDIN_FILENO, &E.orig_termios); // get terminal attribute
     if (err < 0) die("tcgetattr");
-
     atexit(disableRawMode); // exec when exit
-
     struct termios raw = E.orig_termios;
     // Character size
     raw.c_cflag |= (CS8);
@@ -80,7 +88,6 @@ void enableRawMode() { // Enable raw mode (non canonical mode)
     raw.c_cc[VMIN] = 0; // 0 char
     // time of waiting user
     raw.c_cc[VTIME] = 1; // * 100 millis
-
     err = tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw); // set termial attribute
     if (err < 0) die("tcsetattr");
 }
@@ -91,7 +98,7 @@ void disableRawMode() { // Set termial attribute
 }
 
 void initEditor() {
-    err = getWindowSize(E.screenrows, E.screencols);
+    err = getWindowSize(&E.screenrows, &E.screencols);
     if (err == -1) die("getWindowSize");
 }
 
@@ -119,41 +126,71 @@ void editorProcessKeypress() {
 }
 
 void editorRefreshScreen() { // Refresh screen
-    write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
-    write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
-    editorDrawRows();
-    write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+    struct abuf ab = ABUF_INIT;
+    // write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
+    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+    abAppend(&ab, "\x1b[2J", 4);
+    abAppend(&ab, "\x1b[H", 3);
+    editorDrawRows(&ab);
+    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+    abAppend(&ab, "\x1b[H", 3);
+    write(STDOUT_FILENO, ab.b, ab.len); // cursor pos 0,0
+    abFree(&ab);
 }
 
 
-void editorDrawRows() {
+void editorDrawRows(struct abuf *ab) {
     int y;
-    for (y = 0; y < E.screenrows; y++) write(STDOUT_FILENO, "~\r\n", 3);
+    for (y = 0; y < E.screenrows - 1; y++) {
+        // write(STDOUT_FILENO, "~\r\n", 3);
+        abAppend(ab, "~\r\n", 3);
+    }
+    // write(STDOUT_FILENO, "~", 1); // last line
+    abAppend(ab, "~", 1);
 }
 
-int getWindowSize(int &rows, int &cols) {
+int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
     err = ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-    // bool debug = false;
     if (debug || err == -1 || ws.ws_col == 0){
         err = write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12);
         if (err != 12) return -1;
         return getCursorPosition(rows, cols);
     }
-    cols = ws.ws_col;
-    rows = ws.ws_row;
+    *cols = ws.ws_col;
+    *rows = ws.ws_row;
     return 0;
 }
 
-int getCursorPosition(int &rows, int &cols) {
+int getCursorPosition(int *rows, int *cols) {
+    char buf[32];
+    unsigned int i = 0;
+
     err = write(STDOUT_FILENO, "\x1b[6n", 4);
     if (err != 4) return -1;
-    printf("\r\n");
-    char c;
-    while (read(STDIN_FILENO, &c, 1) == 1) {
-        if (iscntrl(c)) printf("%d\r\n", c);
-        printf("%d ('%c')\r\n", c, c);
+
+    while (i < sizeof(buf) - 1) {
+        err = read(STDIN_FILENO, &buf[i], 1);
+        if (err != 1) break;
+        if (buf[i] == 'R') break;
+        i++;
     }
-    editorReadKey();
-    return -1;
+    buf[i] = '\0';
+
+    if (buf[0] != '\x1b' || buf[1] != '[') return -1;
+    if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
+
+    return 0;
+}
+
+void abAppend(struct abuf *ab, const char *s, int len) {
+    char *newab = (char*)realloc(ab->b, ab->len + len);
+    if (newab == NULL) return;
+    memcpy(&newab[ab->len], s, len);
+    ab->b = newab;
+    ab->len += len;
+}
+
+void abFree(struct abuf *ab) {
+    free(ab->b);
 }
