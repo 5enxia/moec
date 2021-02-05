@@ -127,13 +127,16 @@ void editorProcessKeypress() {
 
 void editorRefreshScreen() { // Refresh screen
     struct abuf ab = ABUF_INIT;
-    // write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
-    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+
+    abAppend(&ab, "\x1b[?25l", 6); // hide cursor
     abAppend(&ab, "\x1b[2J", 4);
     abAppend(&ab, "\x1b[H", 3);
+
     editorDrawRows(&ab);
-    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+
     abAppend(&ab, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[?25h", 6); // show cursor
+
     write(STDOUT_FILENO, ab.b, ab.len); // cursor pos 0,0
     abFree(&ab);
 }
@@ -141,12 +144,14 @@ void editorRefreshScreen() { // Refresh screen
 
 void editorDrawRows(struct abuf *ab) {
     int y;
-    for (y = 0; y < E.screenrows - 1; y++) {
+    for (y = 0; y < E.screenrows; y++) {
         // write(STDOUT_FILENO, "~\r\n", 3);
-        abAppend(ab, "~\r\n", 3);
+        abAppend(ab, "~", 1);
     }
     // write(STDOUT_FILENO, "~", 1); // last line
-    abAppend(ab, "~", 1);
+    if (y < E.screencols - 1) {
+        abAppend(ab, "\r\n", 2);
+    }
 }
 
 int getWindowSize(int *rows, int *cols) {
