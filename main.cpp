@@ -10,6 +10,7 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define ABUF_INIT {NULL, 0}
+#define VERSION "1.0.0"
 
 struct abuf { // append buffer
     char *b;
@@ -129,7 +130,6 @@ void editorRefreshScreen() { // Refresh screen
     struct abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6); // hide cursor
-    abAppend(&ab, "\x1b[2J", 4);
     abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
@@ -145,12 +145,24 @@ void editorRefreshScreen() { // Refresh screen
 void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenrows; y++) {
-        // write(STDOUT_FILENO, "~\r\n", 3);
-        abAppend(ab, "~", 1);
-    }
-    // write(STDOUT_FILENO, "~", 1); // last line
-    if (y < E.screencols - 1) {
-        abAppend(ab, "\r\n", 2);
+        if (y == E.screenrows / 2) {
+            // welcome msg
+            char msg[80];
+            int msglen = snprintf(msg, sizeof(msg), "moec: v%s", VERSION);
+            if (msglen > E.screencols) msglen = E.screencols;
+            int padding = (E.screencols - msglen) / 2;
+            abAppend(ab, "~", 1);
+            padding--;
+            while (padding--) abAppend(ab, " ", 1);
+            abAppend(ab, msg, msglen);
+        } else {
+            abAppend(ab, "~", 1);
+        }
+
+        abAppend(ab, "\x1b[K", 3); // erase line
+        if (y < E.screencols - 1) {
+            abAppend(ab, "\r\n", 2);
+        }
     }
 }
 
