@@ -18,6 +18,7 @@ struct abuf { // append buffer
 };
 
 struct editorConfig { // editor params
+    int cx, cy;
     int screenrows;
     int screencols;
     struct termios orig_termios;
@@ -99,6 +100,9 @@ void disableRawMode() { // Set termial attribute
 }
 
 void initEditor() {
+    E.cx = 0;
+    E.cy = 0;
+
     err = getWindowSize(&E.screenrows, &E.screencols);
     if (err == -1) die("getWindowSize");
 }
