@@ -10,6 +10,7 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define ABUF_INIT {NULL, 0}
+#define VERSION "1.0.0"
 
 struct abuf { // append buffer
     char *b;
@@ -17,6 +18,7 @@ struct abuf { // append buffer
 };
 
 struct editorConfig { // editor params
+    int cx, cy;
     int screenrows;
     int screencols;
     struct termios orig_termios;
@@ -98,6 +100,9 @@ void disableRawMode() { // Set termial attribute
 }
 
 void initEditor() {
+    E.cx = 0;
+    E.cy = 0;
+
     err = getWindowSize(&E.screenrows, &E.screencols);
     if (err == -1) die("getWindowSize");
 }
@@ -127,13 +132,19 @@ void editorProcessKeypress() {
 
 void editorRefreshScreen() { // Refresh screen
     struct abuf ab = ABUF_INIT;
-    // write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
-    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
-    abAppend(&ab, "\x1b[2J", 4);
+
+    abAppend(&ab, "\x1b[?25l", 6); // hide cursor
     abAppend(&ab, "\x1b[H", 3);
+
     editorDrawRows(&ab);
-    // write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1); // cursor
+    abAppend(&ab, buf, strlen(buf));
+
     abAppend(&ab, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[?25h", 6); // show cursor
+
     write(STDOUT_FILENO, ab.b, ab.len); // cursor pos 0,0
     abFree(&ab);
 }
@@ -141,12 +152,26 @@ void editorRefreshScreen() { // Refresh screen
 
 void editorDrawRows(struct abuf *ab) {
     int y;
-    for (y = 0; y < E.screenrows - 1; y++) {
-        // write(STDOUT_FILENO, "~\r\n", 3);
-        abAppend(ab, "~\r\n", 3);
+    for (y = 0; y < E.screenrows; y++) {
+        if (y == E.screenrows / 2) {
+            // welcome msg
+            char msg[80];
+            int msglen = snprintf(msg, sizeof(msg), "moec: v%s", VERSION);
+            if (msglen > E.screencols) msglen = E.screencols;
+            int padding = (E.screencols - msglen) / 2;
+            abAppend(ab, "~", 1);
+            padding--;
+            while (padding--) abAppend(ab, " ", 1);
+            abAppend(ab, msg, msglen);
+        } else {
+            abAppend(ab, "~", 1);
+        }
+
+        abAppend(ab, "\x1b[K", 3); // erase line
+        if (y < E.screencols - 1) {
+            abAppend(ab, "\r\n", 2);
+        }
     }
-    // write(STDOUT_FILENO, "~", 1); // last line
-    abAppend(ab, "~", 1);
 }
 
 int getWindowSize(int *rows, int *cols) {
