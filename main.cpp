@@ -42,6 +42,7 @@ char editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
+void editorMoveCursor(char key);
 int getWindowSize(int *rows, int *cols);
 int getCursorPosition(int *rows, int *cols);
 
@@ -116,11 +117,21 @@ char editorReadKey() { // key input
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
         if (nread == -1 && errno != EAGAIN) die("read");
     }
-    if ('x\1b') {
+
+    if (c == '\x1b') {
         char seq[3];
 
-        if (read(STDIN_FILE, &seq[0], 1) != 1) return 'x\1b';
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
+        if (seq[0] == '[') {
+            switch (seq[1]) {
+                case 'A': return 'w';
+                case 'B': return 's';
+                case 'C': return 'd';
+                case 'D': return 'a';
+            }
+        }
     }
     return c;
 }
@@ -133,11 +144,14 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
             break;
+<<<<<<< Updated upstream
          case 'a':
          case 'd':
          case 'w':
          case 's':
             editorMoveCursor(c);
+=======
+
     }
 }
 
@@ -145,7 +159,6 @@ void editorRefreshScreen() { // Refresh screen
     struct abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6); // hide cursor
-    abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
 
@@ -182,6 +195,23 @@ void editorDrawRows(struct abuf *ab) {
         if (y < E.screencols - 1) {
             abAppend(ab, "\r\n", 2);
         }
+    }
+}
+
+void editorMoveCursor(char key) {
+    switch (key) {
+        case 'a':
+            E.cx--;
+            break;
+        case 'd':
+            E.cx++;
+            break;
+        case 'w':
+            E.cy--;
+            break;
+        case 's':
+            E.cy++;
+            break;
     }
 }
 
