@@ -116,6 +116,12 @@ char editorReadKey() { // key input
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
         if (nread == -1 && errno != EAGAIN) die("read");
     }
+    if ('x\1b') {
+        char seq[3];
+
+        if (read(STDIN_FILE, &seq[0], 1) != 1) return 'x\1b';
+
+    }
     return c;
 }
 
@@ -127,6 +133,11 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
             break;
+         case 'a':
+         case 'd':
+         case 'w':
+         case 's':
+            editorMoveCursor(c);
     }
 }
 
