@@ -12,6 +12,11 @@
 #define ABUF_INIT {NULL, 0}
 #define VERSION "1.0.0"
 
+typedef struct erow {
+    int size;
+    char *chars;
+} erow;
+
 struct abuf { // append buffer
     char *b;
     int len;
@@ -22,6 +27,8 @@ struct editorConfig { // editor params
     int screenrows;
     int screencols;
     struct termios orig_termios;
+    int numrows;
+    erow row;
 };
 
 // debug mode
@@ -103,6 +110,7 @@ void disableRawMode() { // Set termial attribute
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.numrows = 0;
 
     err = getWindowSize(&E.screenrows, &E.screencols);
     if (err == -1) die("getWindowSize");
