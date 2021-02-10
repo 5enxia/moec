@@ -6,7 +6,9 @@
 
 #include<unistd.h>
 #include<termios.h>
+
 #include<sys/ioctl.h>
+#include<sys/types.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define ABUF_INIT {NULL, 0}
@@ -50,6 +52,7 @@ void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
 void editorMoveCursor(char key);
+void editorOpen(); // FILE IO
 int getWindowSize(int *rows, int *cols);
 int getCursorPosition(int *rows, int *cols);
 
@@ -152,14 +155,11 @@ void editorProcessKeypress() {
             write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
             break;
-<<<<<<< Updated upstream
          case 'a':
          case 'd':
          case 'w':
          case 's':
             editorMoveCursor(c);
-=======
-
     }
 }
 
@@ -221,6 +221,16 @@ void editorMoveCursor(char key) {
             E.cy++;
             break;
     }
+}
+
+void editorOpen() { // FILE IO
+    char *line = "HELLO, WORLD";
+    ssize_t linelen = 13;
+    E.row.size = linelen;
+    E.row.chars = (char*)malloc(linelen);
+    memcpy(E.row.chars, line, linelen);
+    E.row.chars[linelen] = '\0';
+    E.numrows = 1;
 }
 
 int getWindowSize(int *rows, int *cols) {
