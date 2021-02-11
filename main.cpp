@@ -72,6 +72,7 @@ int main(int argc, char * const argv[]) {
     }
     enableRawMode();
     initEditor();
+    editorOpen();
     while(1) {
         editorRefreshScreen();
         editorProcessKeypress();
