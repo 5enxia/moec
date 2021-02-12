@@ -52,7 +52,7 @@ void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
 void editorMoveCursor(char key);
-void editorOpen(); // FILE IO
+void editorOpen(char *filename); // FILE IO
 int getWindowSize(int *rows, int *cols);
 int getCursorPosition(int *rows, int *cols);
 
@@ -72,7 +72,7 @@ int main(int argc, char * const argv[]) {
     }
     enableRawMode();
     initEditor();
-    editorOpen();
+    if (argc >= 2) editorOpen(argv[1]);
     while(1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -186,20 +186,25 @@ void editorRefreshScreen() { // Refresh screen
 void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenrows; y++) {
-        if (y == E.screenrows / 2) {
-            // welcome msg
-            char msg[80];
-            int msglen = snprintf(msg, sizeof(msg), "moec: v%s", VERSION);
-            if (msglen > E.screencols) msglen = E.screencols;
-            int padding = (E.screencols - msglen) / 2;
-            abAppend(ab, "~", 1);
-            padding--;
-            while (padding--) abAppend(ab, " ", 1);
-            abAppend(ab, msg, msglen);
+        if (y >= E.numrows) {
+            if (y == E.screenrows / 2) {
+                // welcome msg
+                char msg[80];
+                int msglen = snprintf(msg, sizeof(msg), "moec: v%s", VERSION);
+                if (msglen > E.screencols) msglen = E.screencols;
+                int padding = (E.screencols - msglen) / 2;
+                abAppend(ab, "~", 1);
+                padding--;
+                while (padding--) abAppend(ab, " ", 1);
+                abAppend(ab, msg, msglen);
+            } else {
+                abAppend(ab, "~", 1);
+            }
         } else {
-            abAppend(ab, "~", 1);
+            int len = E.row.size;
+            if (len > E.screencols) len = E.screencols;
+            abAppend(ab, E.row.chars, len);
         }
-
         abAppend(ab, "\x1b[K", 3); // erase line
         if (y < E.screencols - 1) {
             abAppend(ab, "\r\n", 2);
@@ -224,14 +229,23 @@ void editorMoveCursor(char key) {
     }
 }
 
-void editorOpen() { // FILE IO
-    char *line = "HELLO, WORLD";
-    ssize_t linelen = 13;
-    E.row.size = linelen;
-    E.row.chars = (char*)malloc(linelen);
-    memcpy(E.row.chars, line, linelen);
-    E.row.chars[linelen] = '\0';
-    E.numrows = 1;
+void editorOpen(char *filename) { // FILE IO
+    FILE *fp = fopen(filename, "r");
+    if (!fp) die("fopen");
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen = getline(&line, &linecap, fp);
+    if (linelen != -1) {
+        bool flag = linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r');
+        while (flag) linelen--;
+        E.row.size = linelen;
+        E.row.chars = (char*)malloc(linelen * 1);
+        memcpy(E.row.chars, line, linelen);
+        E.row.chars[linelen] = '\0';
+        E.numrows = 1;
+    }
+    free(line);
+    fclose(fp);
 }
 
 int getWindowSize(int *rows, int *cols) {
