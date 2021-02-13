@@ -28,13 +28,13 @@ struct abuf { // append buffer
     int len;
 };
 
-struct editorConfig { // editor params
+structa
     int cx, cy;
     int screenrows;
     int screencols;
-    struct termios orig_termios;
     int numrows;
-    erow row;
+    erow *row;
+    struct termios orig_termios;
 };
 
 // debug mode
@@ -57,6 +57,9 @@ void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
 void editorMoveCursor(char key);
 void editorOpen(char *filename); // FILE IO
+void editorAppendRow(char *s, size_t len);
+
+// screen
 int getWindowSize(int *rows, int *cols);
 int getCursorPosition(int *rows, int *cols);
 
@@ -119,6 +122,7 @@ void initEditor() {
     E.cx = 0;
     E.cy = 0;
     E.numrows = 0;
+    E.erow = NULL;
 
     err = getWindowSize(&E.screenrows, &E.screencols);
     if (err == -1) die("getWindowSize");
@@ -191,7 +195,7 @@ void editorDrawRows(struct abuf *ab) {
     int y;
     for (y = 0; y < E.screenrows; y++) {
         if (y >= E.numrows) {
-            if (y == E.screenrows / 2) {
+            if (E.numrows == 9 && y == E.screenrows / 2) {
                 // welcome msg
                 char msg[80];
                 int msglen = snprintf(msg, sizeof(msg), "moec: v%s", VERSION);
@@ -251,6 +255,15 @@ void editorOpen(char *filename) { // FILE IO
     free(line);
     fclose(fp);
 }
+
+void editorAppendRow(char *s, size_t len) {
+    E.row.size = len;
+    E.row.chars = (char*)malloc(len + 1);
+    memcpy(E.row.chars, s, len);
+    E.row.chars[len] = '\0';
+    E.numrows = 1;
+}
+
 
 int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
