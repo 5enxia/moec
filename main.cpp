@@ -18,6 +18,17 @@
 #define ABUF_INIT {NULL, 0}
 #define VERSION "1.0.0"
 
+enum editorKey {
+    ARROW_LEFT = 1000,
+    ARROW_RIGHT,
+    ARROW_UP,
+    ARROW_DOWN,
+    HOME_KEY,
+    END_KEY,
+    PAGE_UP,
+    PAGE_DOWN
+};
+
 typedef struct erow {
     int size;
     char *chars;
@@ -52,13 +63,14 @@ void disableRawMode();
 // editor
 struct editorConfig E;
 void initEditor();
-char editorReadKey();
+int editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows(struct abuf *ab);
-void editorMoveCursor(char key);
+void editorMoveCursor(int key);
 void editorOpen(char *filename); // FILE IO
 void editorAppendRow(char *s, size_t len);
+void editorScroll();
 
 // screen
 int getWindowSize(int *rows, int *cols);
@@ -136,7 +148,7 @@ void initEditor() {
     if (err == -1) die("getWindowSize");
 }
 
-char editorReadKey() { // key input
+int editorReadKey() { // key input
     int nread;
     char c;
     // Doesn't work bellow comment out code...
@@ -153,11 +165,32 @@ char editorReadKey() { // key input
         if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
 
         if (seq[0] == '[') {
+            if (seq[1] >= '0' && seq[1] <= '9') {
+                if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+                if (seq[2] == '~') {
+                    switch (seq[1]) {
+                        case '1': return HOME_KEY;
+                        case '4': return END_KEY;
+                        case '5': return PAGE_UP;
+                        case '6': return PAGE_DOWN;
+                        case '7': return HOME_KEY;
+                        case '8': return END_KEY;
+                    }
+                }
+            } else {
+                switch (seq[1]) {
+                    case 'A': return ARROW_UP;
+                    case 'B': return ARROW_DOWN;
+                    case 'C': return ARROW_RIGHT;
+                    case 'D': return ARROW_LEFT;
+                    case 'H': return HOME_KEY;
+                    case 'F': return END_KEY;
+                }
+            }
+        } else if (seq[0] == '0') {
             switch (seq[1]) {
-                case 'A': return 'w';
-                case 'B': return 's';
-                case 'C': return 'd';
-                case 'D': return 'a';
+                case 'H': return HOME_KEY;
+                case 'F': return END_KEY;
             }
         }
     }
@@ -165,22 +198,40 @@ char editorReadKey() { // key input
 }
 
 void editorProcessKeypress() {
-    char c = editorReadKey();
+    int c = editorReadKey();
     switch (c) {
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
             write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
             break;
-         case 'a':
-         case 'd':
-         case 'w':
-         case 's':
+
+         case HOME_KEY:
+            E.cx = 0;
+            break;
+
+         case END_KEY:
+            E.cx = E.screencols - 1;
+            break;
+
+         case PAGE_UP:
+         case PAGE_DOWN:
+            {
+                int times = E.screenrows;
+                while (times--) editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+            }
+
+         case ARROW_UP:
+         case ARROW_DOWN:
+         case ARROW_LEFT:
+         case ARROW_RIGHT:
             editorMoveCursor(c);
     }
 }
 
 void editorRefreshScreen() { // Refresh screen
+    editorScroll();
+
     struct abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6); // hide cursor
@@ -232,18 +283,19 @@ void editorDrawRows(struct abuf *ab) {
     }
 }
 
-void editorMoveCursor(char key) {
+void editorMoveCursor(int key) {
     switch (key) {
-        case 'a':
-            E.cx--;
+        case ARROW_LEFT:
+            if (0 < E.cx) E.cx--;
             break;
-        case 'd':
-            E.cx++;
+        case ARROW_RIGHT:
+            if (E.cx < E.screencols - 1) E.cx++;
             break;
-        case 'w':
-            E.cy--;
+        case ARROW_UP:
+            if (0 < E.cy) E.cy--;
             break;
-        case 's':
+        case ARROW_DOWN:
+            if (E.cy < E.screenrows - 1) E.cy++;
             E.cy++;
             break;
     }
@@ -274,6 +326,10 @@ void editorAppendRow(char *s, size_t len) {
     E.numrows++;
 }
 
+void editorScroll() {
+    if (E.cy < E.rowoff) E.rowoff = E.cy;
+    if (E.cy >= E.rowoff + E.screenrows) E.rowoff = E.cy - E.screenrows + 1;
+}
 
 int getWindowSize(int *rows, int *cols) {
     struct winsize ws;
