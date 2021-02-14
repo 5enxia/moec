@@ -11,6 +11,7 @@
 #include<cstdarg>
 
 #include<unistd.h>
+#include<fcntl.h>
 #include<termios.h>
 
 #include<sys/ioctl.h>
@@ -22,6 +23,7 @@
 #define TAB_STOP 8
 
 enum editorKey {
+    BACKSPACE = 127,
     ARROW_LEFT = 1000,
     ARROW_RIGHT,
     ARROW_UP,
@@ -72,6 +74,7 @@ void enableRawMode();
 void disableRawMode();
 
 // editor
+// read
 struct editorConfig E;
 void initEditor();
 int editorReadKey();
@@ -84,6 +87,14 @@ void editorAppendRow(char *s, size_t len);
 void editorUpdateRow(erow *row);
 void editorScroll();
 int editorRowCxToRx(erow *row, int cx);
+
+// write
+void editorRowInsertChar(erow *row, int at, int c);
+void editorInsertChar(int c);
+
+// save
+char* editorRowToString(int *buflen);
+void editorSave();
 
 // status/message bar
 void editorDrawStatusBar(struct abuf *ab);
@@ -223,11 +234,19 @@ int editorReadKey() { // key input
 
 void editorProcessKeypress() {
     int c = editorReadKey();
+
     switch (c) {
+        case '\r':
+            break;
+
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4); // clear screen
             write(STDOUT_FILENO, "\x1b[H", 3); // cursor pos 0,0
             exit(0);
+            break;
+
+        case CTRL_KEY('s'):
+            editorSave();
             break;
 
         case HOME_KEY:
@@ -237,6 +256,11 @@ void editorProcessKeypress() {
         case END_KEY:
             if (E.cy < E.numrows) E.cx = E.row[E.cy].size;
             E.cx = E.screencols - 1;
+            break;
+
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DEL_KEY:
             break;
 
         case PAGE_UP:
@@ -258,6 +282,14 @@ void editorProcessKeypress() {
         case ARROW_LEFT:
         case ARROW_RIGHT:
             editorMoveCursor(c);
+            break;
+
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+
+        default:
+            editorInsertChar(c);
             break;
     }
 }
@@ -474,6 +506,52 @@ void editorDrawMessageBar(struct abuf *ab) {
     int msglen = strlen(E.statusmsg);
     if (msglen > E.screencols) msglen = E.screencols;
     if (msglen && time(NULL) - E.statusmsg_time < 5) abAppend(ab, E.statusmsg, msglen);
+}
+
+void editorRowInsertChar(erow *row, int at, int c) {
+    if (at < 0 || row->size < at) at = row->size;
+    row->chars = (char*)realloc(row->chars, row->size + 2);
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    row->size++;
+    row->chars[at] = c;
+    editorUpdateRow(row);
+}
+
+void editorInsertChar(int c) {
+    if (E.cy == E.numrows) editorAppendRow("", 0);
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
+}
+
+char* editorRowToString(int *buflen) {
+    int totlen = 0;
+    int j;
+    for (j = 0; j < E.numrows; j++) totlen += E.row[j].size + 1;
+    *buflen = totlen;
+
+    char *buf = (char*)malloc(totlen);
+    char *p = buf;
+    for (j = 0; j < E.numrows; j++) {
+        memcpy(p, E.row[j].chars, E.row[j].size);
+        p += E.row[j].size;
+        *p = '\n';
+        p++;
+    }
+
+    return buf;
+}
+
+void editorSave() {
+    if (E.filename == NULL) return; // NO FILE
+
+    int len;
+    char *buf = editorRowToString(&len);
+
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644); // read/write mode or create file
+    ftruncate(fd, len); // ファイルを切り詰める
+    write(fd, buf, len);
+    close(fd);
+    free(buf);
 }
 
 int getWindowSize(int *rows, int *cols) {
