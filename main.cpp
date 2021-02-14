@@ -7,6 +7,8 @@
 #include<cstdio>
 #include<cerrno>
 #include<cstring>
+#include<ctime>
+#include<cstdarg>
 
 #include<unistd.h>
 #include<termios.h>
@@ -53,6 +55,8 @@ struct editorConfig {
     int numrows;
     erow *row;
     char *filename;
+    char statusmsg[80];
+    time_t statusmsg_time;
     struct termios orig_termios;
 };
 
@@ -81,8 +85,10 @@ void editorUpdateRow(erow *row);
 void editorScroll();
 int editorRowCxToRx(erow *row, int cx);
 
-// status bar
+// status/message bar
 void editorDrawStatusBar(struct abuf *ab);
+void editorSetStatusMessage(const char *fmt, ...); // ... == variable args
+void editorDrawMessageBar(struct abuf *ab);
 
 // screen
 int getWindowSize(int *rows, int *cols);
@@ -110,6 +116,7 @@ int main(int argc, char * const argv[]) {
     enableRawMode();
     initEditor();
     if (argc >= 2) editorOpen(argv[1]);
+    editorSetStatusMessage("HELP: Ctr-Q = quit");
     while(1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -157,9 +164,11 @@ void initEditor() {
     E.numrows = 0;
     E.row = NULL;
     E.filename = NULL;
+    E.statusmsg[0] = '\0';
+    E.statusmsg_time = 0;
 
     if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-    E.screenrows--;
+    E.screenrows-=2;
 }
 
 int editorReadKey() { // key input
@@ -262,6 +271,7 @@ void editorRefreshScreen() { // Refresh screen
 
     editorDrawRows(&ab);
     editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy - E.rowoff + 1, E.rx - E.coloff + 1); // cursor
@@ -448,6 +458,22 @@ void editorDrawStatusBar(struct abuf *ab) { // status bar
         }
     }
     abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
+
+void editorSetStatusMessage(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+    abAppend(ab, "x1b[K", 3);
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols) msglen = E.screencols;
+    if (msglen && time(NULL) - E.statusmsg_time < 5) abAppend(ab, E.statusmsg, msglen);
 }
 
 int getWindowSize(int *rows, int *cols) {
