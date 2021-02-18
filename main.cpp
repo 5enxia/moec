@@ -101,7 +101,7 @@ void editorDelChar();
 void editorFreeRow(erow *row);
 void editorDelRow(int at);
 // append
-void editorRowAppendStrint(erow *row, char *s, size_t len) {
+void editorRowAppendString(erow *row, char *s, size_t len) {
     row->chars = (char*)realloc(row->chars, row->size + len + 1);
     memcpy(&row->chars[row->size], s, len);
     row->size += len;
