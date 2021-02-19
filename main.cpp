@@ -101,14 +101,7 @@ void editorDelChar();
 void editorFreeRow(erow *row);
 void editorDelRow(int at);
 // append
-void editorRowAppendString(erow *row, char *s, size_t len) {
-    row->chars = (char*)realloc(row->chars, row->size + len + 1);
-    memcpy(&row->chars[row->size], s, len);
-    row->size += len;
-    row->chars[row->size] = '\0';
-    editorUpdateRow(row);
-    E.dirty++;
-} // <- next
+void editorRowAppendString(erow *row, char *s, size_t len);
 // save
 char* editorRowToString(int *buflen);
 void editorSave();
@@ -589,6 +582,15 @@ void editorDelRow(int at) {
     editorFreeRow(&E.row[at]);
     memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
     E.numrows--;
+    E.dirty++;
+}
+
+void editorRowAppendString(erow *row, char *s, size_t len) {
+    row->chars = (char*)realloc(row->chars, row->size + len + 1);
+    memcpy(&row->chars[row->size], s, len);
+    row->size += len;
+    row->chars[row->size] = '\0';
+    editorUpdateRow(row);
     E.dirty++;
 }
 
