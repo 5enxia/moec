@@ -107,10 +107,12 @@ void editorDelRow(int at);
 char* editorRowToString(int *buflen);
 void editorSave();
 // prompt
-char *editorPrompt(char *prompt);
+// char *editorPrompt(char *prompt);
+char *editorPrompt(char *prompt, void (*callback)(char *, int)); // function pointer
 
 // find
 void editorFind();
+void editorFindCallback(char *query, int key);
 
 // status/message bar
 void editorDrawStatusBar(struct abuf *ab);
@@ -537,7 +539,8 @@ void editorDelChar() {
     }
 }
 
-char *editorPrompt(char *prompt) {
+// char *editorPrompt(char *prompt) {
+char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
     size_t bufsize = 128;
     char *buf = (char*)malloc(bufsize);
 
@@ -553,11 +556,13 @@ char *editorPrompt(char *prompt) {
             if (buflen != 0) buf[--buflen] = '\0';
         } else if (c == '\x1b') {
             editorSetStatusMessage("");
+            if (callback) callback(buf, c);
             free(buf);
             return NULL;
         } else if (c == '\r') {
             if (buflen != 0) {
                 editorSetStatusMessage("");
+                if (callback) callback(buf, c);
                 return buf;
             }
         } else if (!iscntrl(c) && c < 128) {
@@ -568,28 +573,71 @@ char *editorPrompt(char *prompt) {
             buf[buflen++] = c;
             buf[buflen] = '\0';
         }
+        if (callback) callback(buf, c);
     }
 }
 
 // find word
 void editorFind() {
-    char *msg = (char*)"Search: %s (ESC to cancel)";
-    char *query = editorPrompt(msg);
-    if (query == NULL) return;
+    // previous state
+    int pre_cx = E.cx;
+    int pre_cy = E.cy;
+    int pre_coloff = E.coloff;
+    int pre_rowoff = E.rowoff;
+
+    char *msg = (char*)"Search: %s (ESC: cancel | Arrow: move | Enter: end)";
+    char *query = editorPrompt(msg, editorFindCallback);
+
+    if (query) free(query);
+    else {
+        E.cx = pre_cx;
+        E.cy = pre_cy;
+        E.coloff = pre_coloff;
+        E.rowoff = pre_rowoff;
+    }
+}
+
+void editorFindCallback(char *query, int key) {
+    static int last_match = -1;
+    static int direction = 1;
+
+    // move direction
+    if (key == '\r' || key == '\x1b') {
+        last_match = -1;
+        direction = 1;
+        return;
+    // ->, |
+    //     v
+    } else if (key == ARROW_RIGHT || key == ARROW_DOWN) {
+        direction = 1;
+    // <-, A
+    //     |
+    } else if (key == ARROW_LEFT || key == ARROW_UP) {
+        direction = -1;
+    } else {
+        last_match = -1;
+        direction = 1;
+    }
+
+    if (last_match == -1) direction = 1;
+    int current = last_match;
 
     int i;
     for (i = 0; i < E.numrows; i++) {
+        current += direction;
+        if (current == -1) current = E.numrows - 1;
+        else if (current == E.numrows) current = 0;
+
         erow *row = &E.row[i];
         char *match = strstr(row->render, query);
         if (match) {
-            E.cy = i;
+            last_match = current;
+            E.cy = current;
             E.cx = editorRowRxToCx(row, match - row->render);
             E.rowoff = E.numrows;
             break;
         }
     }
-
-    free(query);
 }
 
 void editorDrawStatusBar(struct abuf *ab) { // status bar
@@ -715,7 +763,7 @@ char* editorRowToString(int *buflen) {
 void editorSave() {
     if (E.filename == NULL) {
         char *msg = (char*)"Save as: %s";
-        E.filename = editorPrompt(msg);
+        E.filename = editorPrompt(msg, NULL);
         if (E.filename == NULL) {
             editorSetStatusMessage("Save aborted");
             return;
