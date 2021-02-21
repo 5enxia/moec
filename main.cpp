@@ -92,6 +92,7 @@ void editorInsertRow(int at, char *s, size_t len);
 void editorUpdateRow(erow *row);
 void editorScroll();
 int editorRowCxToRx(erow *row, int cx);
+int editorRowRxToCx(erow *row, int rx);
 // write
 void editorRowInsertChar(erow *row, int at, int c);
 void editorInsertChar(int c);
@@ -107,6 +108,9 @@ char* editorRowToString(int *buflen);
 void editorSave();
 // prompt
 char *editorPrompt(char *prompt);
+
+// find
+void editorFind();
 
 // status/message bar
 void editorDrawStatusBar(struct abuf *ab);
@@ -139,7 +143,7 @@ int main(int argc, char * const argv[]) {
     enableRawMode();
     initEditor();
     if (argc >= 2) editorOpen(argv[1]);
-    editorSetStatusMessage("Ctr-S: save | Ctr-Q: quit");
+    editorSetStatusMessage("Ctrl-s: save | Ctrl-q: quit | Ctr-f: find");
     while(1) {
         editorRefreshScreen();
         editorProcessKeypress();
@@ -277,6 +281,10 @@ void editorProcessKeypress() {
         case END_KEY:
             if (E.cy < E.numrows) E.cx = E.row[E.cy].size;
             E.cx = E.screencols - 1;
+            break;
+
+        case CTRL_KEY('f'):
+            editorFind();
             break;
 
         case BACKSPACE:
@@ -494,6 +502,17 @@ int editorRowCxToRx(erow *row, int cx) {
     return rx;
 }
 
+int editorRowRxToCx(erow *row, int rx) {
+    int cur_rx = 0;
+    int cx;
+    for (cx = 0; cx < row->size; cx++) {
+        if (row->chars[cx] == '\t') cur_rx += TAB_STOP - 1 - cur_rx % TAB_STOP;
+        cur_rx++;
+        if (cur_rx > rx) return cx;
+    }
+    return cx;
+}
+
 void editorRowDelChar(erow *row, int at) {
     bool isNotInRange = at < 0 || at >= row->size;
     if (isNotInRange) return;
@@ -550,6 +569,27 @@ char *editorPrompt(char *prompt) {
             buf[buflen] = '\0';
         }
     }
+}
+
+// find word
+void editorFind() {
+    char *msg = (char*)"Search: %s (ESC to cancel)";
+    char *query = editorPrompt(msg);
+    if (query == NULL) return;
+
+    int i;
+    for (i = 0; i < E.numrows; i++) {
+        erow *row = &E.row[i];
+        char *match = strstr(row->render, query);
+        if (match) {
+            E.cy = i;
+            E.cx = editorRowRxToCx(row, match - row->render);
+            E.rowoff = E.numrows;
+            break;
+        }
+    }
+
+    free(query);
 }
 
 void editorDrawStatusBar(struct abuf *ab) { // status bar
