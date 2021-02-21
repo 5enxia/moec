@@ -88,24 +88,25 @@ void editorDrawRows(struct abuf *ab);
 void editorMoveCursor(int key);
 // read
 void editorOpen(char *filename); // FILE IO
-void editorAppendRow(char *s, size_t len);
+void editorInsertRow(int at, char *s, size_t len);
 void editorUpdateRow(erow *row);
 void editorScroll();
 int editorRowCxToRx(erow *row, int cx);
 // write
 void editorRowInsertChar(erow *row, int at, int c);
 void editorInsertChar(int c);
+void editorRowAppendString(erow *row, char *s, size_t len);
+void editorInsertNewLine();
 // delete
 void editorRowDelChar(erow *row, int at);
 void editorDelChar();
 void editorFreeRow(erow *row);
 void editorDelRow(int at);
-// append
-void editorRowAppendString(erow *row, char *s, size_t len);
 // save
 char* editorRowToString(int *buflen);
 void editorSave();
-
+// prompt
+char *editorPrompt(char *prompt);
 
 // status/message bar
 void editorDrawStatusBar(struct abuf *ab);
@@ -251,6 +252,7 @@ void editorProcessKeypress() {
 
     switch (c) {
         case '\r':
+            editorInsertNewLine();
             break;
 
         case CTRL_KEY('q'):
@@ -420,16 +422,19 @@ void editorOpen(char *filename) { // FILE IO
     ssize_t linelen;
     while ((linelen = getline(&line, &linecap, fp)) != -1) {
         while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r')) linelen--;
-        editorAppendRow(line, linelen);
+        editorInsertRow(E.numrows, line, linelen);
     }
     free(line);
     fclose(fp);
     E.dirty = 0;
 }
 
-void editorAppendRow(char *s, size_t len) {
+void editorInsertRow(int at, char *s, size_t len) {
+    if (at < 0 || at > E.numrows) return;
+
     E.row = (erow*)realloc(E.row, sizeof(erow) * (E.numrows + 1));
-    int at = E.numrows; // line number
+    memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+
     E.row[at].size = len;
     E.row[at].chars = (char*)malloc(len + 1);
     memcpy(E.row[at].chars, s, len);
@@ -513,6 +518,40 @@ void editorDelChar() {
     }
 }
 
+char *editorPrompt(char *prompt) {
+    size_t bufsize = 128;
+    char *buf = (char*)malloc(bufsize);
+
+    size_t buflen = 0;
+    buf[0] = '\0';
+
+    while(1) {
+        editorSetStatusMessage(prompt, buf);
+        editorRefreshScreen();
+
+        int c = editorReadKey();
+        if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE) {
+            if (buflen != 0) buf[--buflen] = '\0';
+        } else if (c == '\x1b') {
+            editorSetStatusMessage("");
+            free(buf);
+            return NULL;
+        } else if (c == '\r') {
+            if (buflen != 0) {
+                editorSetStatusMessage("");
+                return buf;
+            }
+        } else if (!iscntrl(c) && c < 128) {
+            if (buflen == bufsize - 1) {
+                bufsize *= 2;
+                buf = (char*)realloc(buf, bufsize);
+            }
+            buf[buflen++] = c;
+            buf[buflen] = '\0';
+        }
+    }
+}
+
 void editorDrawStatusBar(struct abuf *ab) { // status bar
     abAppend(ab, "\x1b[7m", 4);
     char status[80], rstatus[80];
@@ -573,7 +612,7 @@ void editorRowInsertChar(erow *row, int at, int c) {
 
 void editorInsertChar(int c) {
     char *blank = (char*)"";
-    if (E.cy == E.numrows) editorAppendRow(blank, 0);
+    if (E.cy == E.numrows) editorInsertRow(E.numrows, blank, 0);
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
 }
@@ -600,6 +639,21 @@ void editorRowAppendString(erow *row, char *s, size_t len) {
     E.dirty++;
 }
 
+void editorInsertNewLine() {
+    char *blank = (char*)"";
+    if (E.row == 0) editorInsertRow(E.cy, blank, 0);
+    else {
+        erow *row = &E.row[E.cy];
+        editorInsertRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+        row = &E.row[E.cy];
+        row->size = E.cx;
+        row->chars[row->size] = '\0';
+        editorUpdateRow(row);
+    }
+    E.cy++;
+    E.cx = 0;
+}
+
 char* editorRowToString(int *buflen) {
     int totlen = 0;
     int j;
@@ -619,7 +673,14 @@ char* editorRowToString(int *buflen) {
 }
 
 void editorSave() {
-    if (E.filename == NULL) return; // NO FILE
+    if (E.filename == NULL) {
+        char *msg = (char*)"Save as: %s";
+        E.filename = editorPrompt(msg);
+        if (E.filename == NULL) {
+            editorSetStatusMessage("Save aborted");
+            return;
+        }
+    }
 
     int len;
     char *buf = editorRowToString(&len);
